@@ -6,7 +6,8 @@ import octoprint.plugin
 from octoprint.events import Events
 import flask
 import socket
-from .toolchanger import ToolChanger
+from octoprint_zbolt.toolchanger import ToolChanger
+from octoprint_zbolt.settings import ZBoltSettings
 
 
 class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
@@ -18,48 +19,8 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
 
     def initialize(self):
         self._logger.info("Z-Bolt Toolchanger init")
-        self._toolchanger = ToolChanger(self._printer, self._settings)
-
-    def get_settings_defaults(self):
-        return dict(
-            t1_offset = dict(x=0, y=0, z=0),
-            t2_offset = dict(x=0, y=0, z=0),
-            t3_offset = dict(x=0, y=0, z=0),
-            parking = dict(safe_y=0, y=0, t0_x=0, t1_x=0, t2_x=0, t3_x=0)
-        )
-
-
-    def on_settings_save(self, data):
-        octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
-        self._toolchanger.load_settings()
-
-    def get_api_commands(self):
-        return dict(
-            get_z_offset=["tool"],
-            set_z_offset=["tool", "value"]
-        )
-
-    def on_api_command(self, command, data):
-        if command == "get_z_offset":
-            tool = data.get("tool")
-            if tool in [1,2,3]:
-                offset = self._settings.get(["t%s_offset" % data.get("tool"), "z"])
-            else: 
-                offset = 0.0
-
-            return flask.jsonify(offset = float(offset))
-
-        elif command == "set_z_offset":
-            self._logger.info("Set Z Offset for T{}: {}".format(data.get("tool"), data.get("value")))
-            self._settings.set(["t%s_offset" % data.get("tool"), "z"], data.get("value"))
-            self._settings.save()
-            return flask.jsonify("OK")
-
-        return "test1"
-
-    def on_api_get(self, request):
-        return flask.jsonify(printer_name="test2")
-
+        self.Settings = ZBoltSettings(self._settings)
+        self.ToolChanger = ToolChanger(self._printer, self.Settings)
 
     def get_assets(self):
         return dict(
@@ -68,14 +29,48 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
             css=['css/main.css', 'css/theme.css']
         )
 
+    def get_settings_defaults(self):
+        return ZBoltSettings.default_settings()
+
+    def get_api_commands(self):
+        return dict(
+            get_z_offset=["tool"],
+            set_z_offset=["tool", "value"]
+        )
+
+    def on_settings_save(self, data):
+        octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
+
+    def on_api_command(self, command, data):
+        if command == "get_z_offset":
+            return flask.jsonify(offset = self.Settings.get_z_offset(data.get("tool")))
+
+        elif command == "set_z_offset":
+            self.Settings.set_z_offset(data.get("tool"), data.get("value"))
+            return flask.jsonify("OK")
+
+    def on_api_get(self, request):
+        return flask.jsonify(printer_name="test2")
 
     def on_event(self, event, payload):
         if event is Events.HOME:
-            self._toolchanger.axis_was_homed()
+            self.ToolChanger.axis_was_homed()
         elif event is Events.TOOL_CHANGE:
-            self._toolchanger.changer_tool(payload['old'], payload['new'])
-            # self._logger.info("Tool was changed: {}, {}".format(payload['old'], payload['new']))
+            self.ToolChanger.change_tool(payload['old'], payload['new'])
+        elif event is Events.CONNECTED:
+            self._logger.info("Z-Bolt checking current tool")
+            self.ToolChanger.initialize()
+        elif event is Events.SETTINGS_UPDATED:
+            self._logger.info("Z-Bolt reloading toolchanger")
+            self.ToolChanger.initialize()
 
+    def on_gcode_received(self, comm, line, *args, **kwargs):
+        if "zbtc:tool_deactivated" in line:
+            self.ToolChanger.activate_tool()
+        elif "zbtc:tool_activated" in line:
+            self.ToolChanger.check_tool()
+
+        return line
 
     def get_template_configs(self):
         return [
@@ -108,5 +103,6 @@ def __plugin_load__():
     __plugin_hooks__ = {
         # "octoprint.comm.protocol.gcode.sending": __plugin_implementation__.on_gcode_sent,
         # "octoprint.comm.protocol.gcode.received": __plugin_implementation__.on_gcode_received,
-        "octoprint.plugin.softwareupdate.check_config":__plugin_implementation__.get_update_information
+        "octoprint.comm.protocol.gcode.received": (__plugin_implementation__.on_gcode_received, -1),
+        "octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information
     }
