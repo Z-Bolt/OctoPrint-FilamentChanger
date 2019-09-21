@@ -3,10 +3,12 @@ from __future__ import absolute_import
 
 # import logging
 import octoprint.plugin
-from octoprint.events import Events
 import flask
 import socket
+
+from octoprint.events import Events
 from octoprint_zbolt.toolchanger import ToolChanger
+from octoprint_zbolt.filament_checker import FilamentChecker
 from octoprint_zbolt.settings import ZBoltSettings
 
 
@@ -21,6 +23,7 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         self._logger.info("Z-Bolt Toolchanger init")
         self.Settings = ZBoltSettings(self._settings)
         self.ToolChanger = ToolChanger(self._printer, self.Settings)
+        self.FilamentChecker = FilamentChecker( self._logger, self._printer, self.ToolChanger, self.Settings)
 
     def get_assets(self):
         return dict(
@@ -34,6 +37,8 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
 
     def get_api_commands(self):
         return dict(
+            problem_occurs=[],
+            problem_solved=[],
             get_z_offset=["tool"],
             set_z_offset=["tool", "value"]
         )
@@ -44,10 +49,19 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
     def on_api_command(self, command, data):
         if command == "get_z_offset":
             return flask.jsonify(offset = self.Settings.get_z_offset(data.get("tool")))
-
         elif command == "set_z_offset":
             self.Settings.set_z_offset(data.get("tool"), data.get("value"))
             return flask.jsonify("OK")
+        elif command == "problem_occurs":
+            self._printer.pause_print()
+            data = {
+                "type": "filament-over", "msg": "Filament eroor"
+            }
+            self._plugin_manager.send_plugin_message(self._identifier, data)
+
+            return flask.jsonify("problem_occurs")
+        elif command == "problem_solved":
+            return flask.jsonify("problem_solved")
 
     def on_api_get(self, request):
         return flask.jsonify(printer_name="test2")
@@ -63,13 +77,20 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         elif event is Events.SETTINGS_UPDATED:
             self._logger.info("Z-Bolt reloading toolchanger")
             self.ToolChanger.initialize()
+        elif event is Events.PRINT_STARTED:
+            self._logger.info("Z-Bolt enable sensors")
+            self.FilamentChecker.enable_monitoring()
+            self.ToolChanger.enable_safe_toolchanging()
+        elif event in (Events.PRINT_DONE, Events.PRINT_FAILED, Events.PRINT_CANCELLED):
+            self._logger.info("Z-Bolt disable sensors")
+            self.FilamentChecker.disable_monitoring()
+            self.ToolChanger.disable_safe_toolchanging()
 
     def on_gcode_received(self, comm, line, *args, **kwargs):
         if "zbtc:tool_deactivated" in line:
             self.ToolChanger.activate_tool()
         elif "zbtc:tool_activated" in line:
             self.ToolChanger.check_tool()
-
         return line
 
     def get_template_configs(self):
@@ -92,6 +113,7 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
             pip="https://github.com/Z-Bolt/OctoPrint-Z-Bolt-Printer/archive/{target_version}.zip"
             )
         )
+
 
 __plugin_name__ = "Z-Bolt Printer"
 

@@ -61,11 +61,39 @@ $(function() {
 
         self.onAfterBinding = function() {
         }
+
+        // Handle Plugin Messages from Server
+        self.onDataUpdaterPluginMessage = function (plugin, data) {
+            console.log('!!!---!!!----!!!')
+            if (plugin !== "zbolt") {
+                return;
+            }
+            console.log('---!!!----')
+            switch (data.type) {
+                case "filament-over":{
+                    //console.log('octolapse.js - render-failed');
+                    self.updateState(data);
+                    var options = {
+                        title: 'Octolapse Rendering Failed',
+                        text: data.msg,
+                        type: 'error',
+                        hide: false,
+                        addclass: "zbolt",
+                        desktop: {
+                            desktop: true
+                        }
+                    };
+                    // Octolapse.displayPopup(options);
+                    new PNotify(options);
+                    break;
+                }
+            }
+        }
     }
 
     OCTOPRINT_VIEWMODELS.push({
         construct: ZBStateViewModel,
-        dependencies: ["printerStateViewModel"]
+        dependencies: ["loginStateViewModel","printerStateViewModel"]
     });
 
 });
