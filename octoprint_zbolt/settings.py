@@ -40,6 +40,8 @@ class ZBoltSettings(object):
     def use_sensors(self):
         return bool(self._settings.get(["parking_sensors"]))
 
+    def use_filament_sensors(self):
+        return bool(self._settings.get(["filament_sensors"]))
 
     @staticmethod
     def default_settings():
@@ -48,5 +50,6 @@ class ZBoltSettings(object):
             t2_offset = dict(x=0, y=0, z=0),
             t3_offset = dict(x=0, y=0, z=0),
             parking = dict(safe_y=0, y=0, t0_x=0, t1_x=0, t2_x=0, t3_x=0),
-            parking_sensors = 0
+            parking_sensors = 0,
+            filament_sensors = 0
         )

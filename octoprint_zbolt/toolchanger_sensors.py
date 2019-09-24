@@ -8,7 +8,7 @@ class ToolChangerSensors:
     def __init__(self):
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BOARD) 
-        self._pins = [ 37,35,33 ]
+        self._pins = [37,35,33]
 
         for p in self._pins:
             GPIO.setup(p, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -23,5 +23,4 @@ class ToolChangerSensors:
         return GPIO.input(self._pins[tool]) == GPIO.HIGH
 
     def is_no_active_tool(self):
-        # return True
         return self.get_active_tool() == -1

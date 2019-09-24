@@ -5,19 +5,23 @@ RETRY_ATTEMPTS = 2
 
 class ToolChanger():
 
-    def __init__(self, printer, settings):
+    def __init__(self, printer, settings, logger):
         self._sensors = None
         self._printer = printer
+        self._logger = logger
         self.Settings = settings
+        self._is_changing_tool = False
 
     def initialize(self):
         self._active_tool = -1
-        self._safe_toolchanging = False
+        self._ignore_sensors = True
         self._skip_movement = False
         self._tool_activation_guaranteed = False
         self._axis_homed = False
-        self._changing_tool_from = None
-        self._changing_tool_to = None
+        self._deactivating_tool_num = None
+        self._activating_tool_num = None
+        self._is_changing_tool = False
+        self._changing_tool_buffer = []
         self._tool_deactivation_attempts = 0
         self._tool_activation_attempts = 0        
 
@@ -31,96 +35,103 @@ class ToolChanger():
             self._sensors = ToolChangerSensors()
             tool = self._sensors.get_active_tool()
             if tool == -1:
-                self._changing_tool_to = 0
-                self.activate_tool()
+                self._activate_tool(0)
             else:
-                self._set_active_tool_silently(tool)
+                self._activate_tool_silently(tool)
 
     def get_active_tool(self):
         return self._active_tool
 
-    def change_tool(self, old, new):
+    def on_tool_change(self, old, new):
         if self._skip_movement:
             self._skip_movement = False
-            return
+            return True
 
         if old == new:
+            return True
+
+        if self._ignore_sensors:
+            self._deactivate_and_activate_tool(old, new)
+            return True
+
+        self._is_changing_tool = True
+        self._deactivating_tool_num = old
+        self._activating_tool_num = new
+        self._tool_deactivation_attempts = 0
+        self._tool_activation_attempts = 0
+        self._deactivate_tool(self._deactivating_tool_num)
+
+    def on_tool_deactivated(self):
+        if not self._guarantee_tool_deactivation():
             return
 
-        self._active_tool = new
+        self._activate_tool(self._activating_tool_num)
 
-        if not self._safe_toolchanging:
-            self._deactivate_activate_tool(old, new)
-        else:
-            self._changing_tool_from = old
-            self._changing_tool_to = new
-            self._tool_deactivation_attempts = 0
-            self._tool_activation_attempts = 0
-            self.deactivate_tool()
+    def on_tool_activated(self):
+        if not self._guarantee_tool_activation():
+            return False
 
-    def deactivate_tool(self):
+        self._activating_tool_num = None
+        self._deactivating_tool_num = None
+        self._is_changing_tool = False
+
+        return True
+
+    def on_axis_homed(self):
+        self._axis_homed = True
+
+    def on_printint_started(self):
+        self._ignore_sensors = False
+
+    def on_printint_stopped(self):
+        self._ignore_sensors = True
+
+    def _deactivate_tool(self, tool):
         self._guarantee_axis_homed()
         self._tool_deactivation_attempts += 1
 
-        self._printer.commands(self._deactive_tool_gcode(self._changing_tool_from))
+        self._printer.commands(self._deactive_tool_gcode(tool))
         self._printer.commands([
             "M400", 
             "M118 zbtc:tool_deactivated"
         ])
 
-    def activate_tool(self):
-        if not self._guarantee_tool_deactivation():
-            return
-        
+    def _activate_tool(self, tool):
         self._guarantee_axis_homed()
         self._tool_activation_attempts += 1
+        self._activating_tool_num = tool
     
-        self._printer.commands(self._active_tool_gcode(self._changing_tool_to))
+        self._printer.commands(self._active_tool_gcode(tool))
         self._printer.commands([
             "M400", 
             "M118 zbtc:tool_activated"
         ])
+        self._active_tool = tool
 
-    def _deactivate_activate_tool(self, old, new):
-        self._guarantee_axis_homed()
-        gcode = self._deactive_tool_gcode(old) + self._active_tool_gcode(new) 
-        self._printer.commands(gcode)
-
-    def check_tool(self):
-        if not self._guarantee_tool_activation():
-            return
-
-        self._changing_tool_from = None
-        self._changing_tool_to = None
-
-    def axis_was_homed(self):
-        self._axis_homed = True
-
-    def enable_safe_toolchanging(self):
-        self._safe_toolchanging = True
-
-    def disable_safe_toolchanging(self):
-        self._safe_toolchanging = False
-
-    def _set_active_tool_silently(self, tool):
+    def _activate_tool_silently(self, tool):
         self._skip_movement = True
         self._printer.commands([
             "T{}".format(tool)
         ])
         self._active_tool = tool
 
+    def _deactivate_and_activate_tool(self, old, new):
+        self._guarantee_axis_homed()
+        self._active_tool = new 
+        gcode = self._deactive_tool_gcode(old) + self._active_tool_gcode(new) 
+        self._printer.commands(gcode)
+
     def _guarantee_tool_deactivation(self):
         if not self._use_sensors:
             return True
 
         if self._tool_deactivation_attempts > RETRY_ATTEMPTS:
-            print("OMG!!!")
-            self.set_active_tool_silently(self._changing_tool_from)
+            self._activate_tool_silently(self._deactivating_tool_num)
             # TODO Here should be some logic of emergent stop!!!
             return False
 
         if not self._sensors.is_no_active_tool():
-            self.deactivate_tool()
+            self._deactivate_tool(self._deactivating_tool_num)
             return False
         
         return True
@@ -130,12 +141,11 @@ class ToolChanger():
             return True
 
         if self._tool_activation_attempts > RETRY_ATTEMPTS:
-            print("OMG!!!")
             # TODO Here should be some logic of emergent stop!!!
             return False
 
-        if not self._sensors.is_tool_active(self._changing_tool_to):
-            self.activate_tool()
+        if not self._sensors.is_tool_active(self._activating_tool_num):
+            self._activate_tool(self._activating_tool_num)
             return False
 
         return True
@@ -147,16 +157,6 @@ class ToolChanger():
         self._printer.commands("G28")
         self._axis_homed = True
 
-    def _reset_flags(self):
-        self.flags = {
-            "is_changing_tool" : False,
-            "homing_first_error" : False
-        }
-
-    def _parse_command(self, line):
-        r = re.compile("old:\s*(?P<old>\d)\s*new:\s*(?P<new>\d)").search(line)
-        return int(r.group("old")), int(r.group("new"))
-
     def _active_tool_gcode(self, tool):
         o = self.offsets[tool]
         return [
@@ -165,6 +165,7 @@ class ToolChanger():
             "G0 Y{} F8000".format(self.parking_safe_y),
             "G0 Y{} F1200".format(self.parking_y),
             "SET_PIN PIN=sol VALUE=1",
+            "G4 P500",
             "G0 Y{} F1200".format(self.parking_safe_y),
             "G0 Y0 F8000",
             "G91",
@@ -183,6 +184,7 @@ class ToolChanger():
             "G0 Y{} F8000".format(self.parking_safe_y),
             "G0 Y{} F1200".format(self.parking_y),
             "SET_PIN PIN=sol VALUE=0",
+            "G4 P500",
             "G0 Y{} F1200".format(self.parking_safe_y),
             "G0 Y0 F8000"
         ]

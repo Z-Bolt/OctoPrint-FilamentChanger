@@ -146,4 +146,17 @@
             </div>
         </div>
 	</fieldset>
+
+
+	<fieldset>
+		<legend>Filament Settings</legend>
+		<div class="row-fluid" style="margin-bottom: 5px">
+            <div class="span3">
+                <label class="control-label">{{ _('Use Sensors:') }}</label>
+            </div>
+            <div class="input span2">
+				<input type="checkbox" data-bind="checked: settings.plugins.zbolt.filament_sensors" />
+            </div>
+        </div>
+    </fieldset>
 </form>
