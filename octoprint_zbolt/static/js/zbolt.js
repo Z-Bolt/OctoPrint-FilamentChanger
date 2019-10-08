@@ -1,50 +1,58 @@
+ZBolt = {
+    tools: [
+        {
+            value: "-1",
+            name: "None"
+        },
+        {
+            value: "0",
+            name: "Extrudert 1"
+        },
+        {
+            value: "1",
+            name: "Extrudert 2"
+        },
+        {
+            value: "2",
+            name: "Extrudert 3"
+        },
+        {
+            value: "3",
+            name: "Extrudert 4"
+        }
+    ],
+
+    toolsFor: function(tool){
+        var tools = [];
+        for (t in this.tools) {
+            if (this.tools[t].value != tool) {
+                tools.push(this.tools[t]);
+            }
+        }
+        return tools;
+    }
+}
+
 $(function() {
 
-    function ZBViewModel(parameters) {
+    ZBolt.FilamentSensorViewModel = function(parameters) {
         var self = this;
         self.settings = parameters[0];
-
-
-        // self.onBeforeBinding = function() {
+        self.onBeforeBinding = function() {
         //     // $("#customControls_containerTemplate_collapsable, #customControls_containerTemplate_nameless").html(function() {
         //     //     return $(this).html().replace(/"custom_section">/g, '"custom_section" data-bind="css: { plugin_control: (plugin_control) }">');
         //     // });
         //     // self.settings = self.settings.settings.plugins.zbolt;
-        // };
+        };
     }
 
-    // OCTOPRINT_VIEWMODELS.push([
-    //     ZBViewModel, ["settingsViewModel"]
-    //     ["#settings_plugin_zbolt"]
-    // ]);
+    OCTOPRINT_VIEWMODELS.push([
+        ZBolt.FilamentSensorViewModel, ["settingsViewModel"]
+        ["#zbolt_filament_settings"]
+    ]);
+    
 
-    OCTOPRINT_VIEWMODELS.push({
-        construct: KlipperSettingsViewModel,
-        dependencies: ["settingsViewModel"],
-        elements: ["#settings_plugin_zbolt"]
-    });
-
-    function ZBConnectionViewModel(parameters) {
-        var self = this;
-
-        // var faviconUrl = document.querySelector("link[rel~='mask-icon-theme']").href
-        // || link.href
-        // || window.location.origin + "/favicon.ico";
-
-
-        self.onAfterBinding = function() {
-            var connection = $("#sidebar_plugin_klipper");
-            connection.collapse("hide");
-         }
-    }
-
-    OCTOPRINT_VIEWMODELS.push({
-        construct: ZBConnectionViewModel,
-        dependencies: ["connectionViewModel"]
-    });
-
-
-    function ZBStateViewModel(parameters) {
+    ZBolt.StateViewModel = function(parameters) {
         var self = this;
         
         self.printerStateViewModel = parameters[0];
@@ -64,11 +72,11 @@ $(function() {
 
         // Handle Plugin Messages from Server
         self.onDataUpdaterPluginMessage = function (plugin, data) {
-            console.log('!!!---!!!----!!!')
+
             if (plugin !== "zbolt") {
                 return;
             }
-            console.log('---!!!----')
+
             switch (data.type) {
                 case "filament-over":{
                     //console.log('octolapse.js - render-failed');
@@ -92,10 +100,32 @@ $(function() {
     }
 
     OCTOPRINT_VIEWMODELS.push({
-        construct: ZBStateViewModel,
-        dependencies: ["loginStateViewModel","printerStateViewModel"]
+        construct: ZBolt.StateViewModel,
+        dependencies: ["printerStateViewModel"]
     });
 
+    ZBolt.ConnectionViewModel = function(parameters) {
+        var self = this;
+
+        self.onAfterBinding = function() {
+            var connection = $("#sidebar_plugin_klipper");
+            connection.collapse("hide");
+         }
+    }
+
+    OCTOPRINT_VIEWMODELS.push({
+        construct: ZBolt.ConnectionViewModel,
+        dependencies: ["connectionViewModel"]
+    });
+
+
+    // if (KlipperSettingsViewModel){
+    //     OCTOPRINT_VIEWMODELS.push({
+    //         construct: KlipperSettingsViewModel,
+    //         dependencies: ["settingsViewModel"],
+    //         elements: ["#settings_plugin_zbolt"]
+    //     });
+    // }
 });
 
 

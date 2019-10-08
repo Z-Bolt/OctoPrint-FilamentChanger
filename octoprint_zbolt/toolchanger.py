@@ -1,5 +1,6 @@
 import re
 from octoprint_zbolt.toolchanger_sensors import ToolChangerSensors
+from octoprint_zbolt.notifications import Notifications
 
 RETRY_ATTEMPTS = 2
 
@@ -13,10 +14,10 @@ class ToolChanger():
         self._is_changing_tool = False
 
     def initialize(self):
-        self._active_tool = -1
-        self._ignore_sensors = True
+        self._active_tool = 0
+        # self._is_printing_now = False
+        # self._tool_activation_guaranteed = False
         self._skip_movement = False
-        self._tool_activation_guaranteed = False
         self._axis_homed = False
         self._deactivating_tool_num = None
         self._activating_tool_num = None
@@ -47,10 +48,14 @@ class ToolChanger():
             self._skip_movement = False
             return True
 
+        if self._use_sensors:
+            old = self._sensors.get_active_tool()
+            self._active_tool = old 
+
         if old == new:
             return True
 
-        if self._ignore_sensors:
+        if not self._printer.is_printing():
             self._deactivate_and_activate_tool(old, new)
             return True
 
@@ -80,11 +85,17 @@ class ToolChanger():
     def on_axis_homed(self):
         self._axis_homed = True
 
-    def on_printint_started(self):
-        self._ignore_sensors = False
+    def on_printing_started(self):
+        if self._use_sensors:
+            tool = self._sensors.get_active_tool()
 
-    def on_printint_stopped(self):
-        self._ignore_sensors = True
+            if tool == -1:
+                self._activate_tool(0)
+            else:
+                self._activate_tool(tool)
+
+    def on_printing_stopped(self):
+        self.initialize()
 
     def _deactivate_tool(self, tool):
         self._guarantee_axis_homed()
@@ -97,6 +108,9 @@ class ToolChanger():
         ])
 
     def _activate_tool(self, tool):
+        if not tool in [0,1,2,3]:
+            return
+
         self._guarantee_axis_homed()
         self._tool_activation_attempts += 1
         self._activating_tool_num = tool
@@ -126,8 +140,14 @@ class ToolChanger():
             return True
 
         if self._tool_deactivation_attempts > RETRY_ATTEMPTS:
-            self._activate_tool_silently(self._deactivating_tool_num)
-            # TODO Here should be some logic of emergent stop!!!
+            self._printer.set_job_on_hold(False)
+
+            if self._printer.is_printing():
+                self._printer.pause_print()
+
+            self._printer.commands(self._emergency_deativation_gcode())
+
+            Notifications.display("Printer cannot activate tool {}.\nPlease fix it and resume printing.".format(self._activating_tool_num+1))
             return False
 
         if not self._sensors.is_no_active_tool():
@@ -141,7 +161,12 @@ class ToolChanger():
             return True
 
         if self._tool_activation_attempts > RETRY_ATTEMPTS:
-            # TODO Here should be some logic of emergent stop!!!
+            self._printer.set_job_on_hold(False)
+
+            if self._printer.is_printing():
+                self._printer.pause_print()
+
+            Notifications.display("Printer cannot activate tool {}.\nPlease fix it and resume printing.".format(self._activating_tool_num+1))
             return False
 
         if not self._sensors.is_tool_active(self._activating_tool_num):
@@ -189,5 +214,12 @@ class ToolChanger():
             "G0 Y0 F8000"
         ]
 
+    def _emergency_deativation_gcode(self):
+        return [
+            "G91",
+            "G0 Y50",
+            "G90",
+            "SET_PIN PIN=sol VALUE=1"
+        ]
 
 

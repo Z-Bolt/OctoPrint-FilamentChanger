@@ -1,6 +1,6 @@
-class Notifications:
+class NotificationsStorage:
     def __init__(self):
-        self._message = "Hello"
+        self._message = "Wake up, Neo...\nThe Matrix has you...\nFollow the white rabbit.\n\n\nKnock, Knock, Neo."
 
     def display(self, message):
         self._message = message
@@ -11,4 +11,5 @@ class Notifications:
         return m
         
 
+Notifications = NotificationsStorage()
 
