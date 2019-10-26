@@ -2,38 +2,58 @@ import time
 import re
 from octoprint_zbolt.notifications import Notifications
 
+try:
+    import RPi.GPIO as GPIO
+except ImportError:	
+    import FakeRPi.GPIO as GPIO
+
 class FilamentChecker:
 
     def __init__(self, logger, printer, toolchanger, settings):
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BOARD) 
+
         self._logger = logger
         self._printer = printer
         self._toolchanger = toolchanger
-        self._status = [ 0, 0, 0, 0]
+        self._pins = [ 40,38,36,32 ]
+        self._bounce = 2000
         self._paused_due_filament_over = False
         self._print_pause_position = None
         self._settings = settings
+
+        for p in self._pins:
+            GPIO.setup(p, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     def on_printing_started(self):
         if not self._settings.use_filament_sensors():
             return
 
         self._logger.info("Z-Bolt enable filament sensors")
-        self._paused_due_filament_over = False
+
+        for p in self._pins:
+            try:
+                GPIO.remove_event_detect(p)
+            except:
+                pass
 
         if not self._check_current_tool():
             Notifications.display("It seems like filament in current extruder is over.\nPlease fix it.")
 
-        # Check that reservation doesn't use in Gcode
-        
-        job = self._printer.get_current_job()
-        self._logger.info(job['filament'])
-
+        for p in self._pins:
+            GPIO.add_event_detect(p, GPIO.FALLING, callback=self._on_sensor_triggered, bouncetime=self._bounce) 
 
     def on_printing_stopped(self):
         if not self._settings.use_filament_sensors():
             return
 
         self._logger.info("Z-Bolt disable filament sensors")
+
+        for p in self._pins:
+            try:
+                GPIO.remove_event_detect(p)
+            except:
+                pass
 
     def on_position_received(self, line):
         if self._paused_due_filament_over and not self._print_pause_position:
@@ -51,7 +71,7 @@ class FilamentChecker:
             if self._print_pause_position:
                 p = self._print_pause_position
                 self._printer.commands([
-                    "G0 X{} Y{} Z{}".format(p["x"], p["y"], p["z"]),
+                    "G0 X{} Y{} Z{} F5000".format(p["x"], p["y"], p["z"]),
                     "G92 E{}".format(p["e"])
                     ])
                 self._print_pause_position = None
@@ -63,45 +83,30 @@ class FilamentChecker:
 
         self._guarantee_filament_presence(new)
 
-    def on_sensor_triggered(self, line):
-        line_arr = line.split(":")
-        tool = int(line_arr[3])
-
-        if line_arr[4] == "in":
-            self._logger.info("Filament is in")
-            self._status[tool] = 1
-        else:
-            self._logger.info("Filament is out")
-            self._status[tool] = 0
-
+    def _on_sensor_triggered(self, pin):
         self._guarantee_filament_presence()
 
     def _guarantee_filament_presence(self, tool=-1):
         if self._paused_due_filament_over or not self._printer.is_printing():
-            self._logger.info("Ignore _guarantee_filament_presence: {}".format(self._paused_due_filament_over))
-            return
+            return 
 
-        self._logger.info("Check current tool _guarantee_filament_presence")
+        time.sleep(1)
 
         if not self._check_current_tool(tool):
             self._logger.error("Stopping printing")
             Notifications.display("It seems like filament in current extruder is over.\nPlease fix it and resume printing.")
             self._paused_due_filament_over = True
             self._printer.pause_print()
-
-            # Service position should not be X0 Y0 due to offsets. In some cases it can lead to 
-            self._printer.commands([
-                "M114", 
-                "G91", "G0 Z2", "G90", 
-                "G91", "G0 E-20", "G90", 
-                "G0 X10 Y200"])
+            self._printer.commands(["M114"])
+            self._printer.commands(["G91", "G0 Z10", "G90"])
+            self._printer.commands(["G0 X0 Y0 F6000"])
 
     def _check_current_tool(self, tool=-1):
         if tool == -1:
             tool = self._toolchanger.get_active_tool()
 
-        self._logger.info("Checking filament presence for tool {}. Status is {}.".format(tool, self._status[tool]))
-        return self._status[tool]
+        pin = self._pins[tool]
+        return GPIO.input(pin)
 
 
 class Response(object):

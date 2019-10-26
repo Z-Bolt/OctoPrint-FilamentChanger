@@ -18,7 +18,8 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
                     octoprint.plugin.TemplatePlugin,
                     octoprint.plugin.AssetPlugin,
                     octoprint.plugin.SimpleApiPlugin,
-                    octoprint.plugin.StartupPlugin):
+                    octoprint.plugin.StartupPlugin
+                    ):
 
     def initialize(self):
         self._logger.info("Z-Bolt Toolchanger init")
@@ -79,23 +80,18 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         if event is Events.HOME:
             self.ToolChanger.on_axis_homed()
         elif event is Events.TOOL_CHANGE:
-            self._logger.info("Event to change tool from {} to {}".format(payload['old'], payload['new']))
             self.FilamentChecker.on_tool_change(payload['old'], payload['new'])
-            if self.ToolChanger.on_tool_change(payload['old'], payload['new']):
-                self._logger.info("release_job_from_hold")
-                self._printer.set_job_on_hold(False)
         elif event is Events.CONNECTED:
-            self._logger.info("Z-Bolt checking current tool")
-            self.ToolChanger.initialize()
+            self._printer.commands(['FIRMWARE_RESTART'])
         elif event is Events.SETTINGS_UPDATED:
             self._logger.info("Z-Bolt reloading toolchanger")
             self.ToolChanger.initialize()
         elif event is Events.PRINT_STARTED:
-            self.FilamentChecker.on_printing_started()
             self.ToolChanger.on_printing_started()
+            self.FilamentChecker.on_printing_started()
         elif event in (Events.PRINT_DONE, Events.PRINT_FAILED, Events.PRINT_CANCELLED):
-            self.FilamentChecker.on_printing_stopped()
             self.ToolChanger.on_printing_stopped()
+            self.FilamentChecker.on_printing_stopped()
         elif event is Events.PRINT_RESUMED:
             self.FilamentChecker.on_print_resumed()
 
@@ -103,17 +99,21 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         if "zbtc:tool_deactivated" in line:
             self.ToolChanger.on_tool_deactivated()
         elif "zbtc:tool_activated" in line:
-            if self.ToolChanger.on_tool_activated():
-                self._logger.info("release_job_from_hold")
-                self._printer.set_job_on_hold(False)
+            self.ToolChanger.on_tool_activated()
+        elif "zbtc:extruder" in line:
+            self.FilamentChecker.on_sensor_triggered(line)
         elif 'X:' in line and 'Y:' in line and 'Z:' in line:
             self.FilamentChecker.on_position_received(line)
+        elif "Klipper state: Ready" in line:
+            self._logger.info("Z-Bolt checking current tool")
+            self.ToolChanger.initialize()
         return line
 
-    def on_gcode_sending(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
+    def on_gcode_queuing(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
         if cmd[0] == 'T':
-            self._logger.info("set_job_on_hold")
-            self._printer.set_job_on_hold(True)
+            tool = int(cmd[1])
+            return [cmd] + self.ToolChanger.on_tool_change_gcode(tool)
+
 
     def get_template_configs(self):
         return [
@@ -145,8 +145,8 @@ def __plugin_load__():
 
     global __plugin_hooks__
     __plugin_hooks__ = {
-        "octoprint.comm.protocol.gcode.sending": (__plugin_implementation__.on_gcode_sending, -1),
-        # "octoprint.comm.protocol.gcode.queuing": (__plugin_implementation__.on_gcode_queuing, -1),
+        # "octoprint.filemanager.analysis.factory": (__plugin_implementation__.on_gcode_analyse, -1),
+        "octoprint.comm.protocol.gcode.queuing": (__plugin_implementation__.on_gcode_queuing, -1),
         "octoprint.comm.protocol.gcode.received": (__plugin_implementation__.on_gcode_received, -1),
         "octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information
     }
