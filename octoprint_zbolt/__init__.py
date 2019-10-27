@@ -9,7 +9,7 @@ import socket
 from octoprint.events import Events
 from octoprint_zbolt.toolchanger import ToolChanger
 from octoprint_zbolt.filament_checker import FilamentChecker
-from octoprint_zbolt.notifications import Notifications
+from octoprint_zbolt_octoscreen.notifications import Notifications
 from octoprint_zbolt.settings import ZBoltSettings
 
 
@@ -34,9 +34,9 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
 
     def get_assets(self):
         return dict(
-            less=['less/theme.less'],
+            # less=['less/theme.less'],
             js=['js/zbolt.js'],
-            css=['css/main.css', 'css/theme.css']
+            # css=['css/main.css', 'css/theme.css']
         )
 
     def get_settings_defaults(self):
@@ -84,8 +84,9 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         elif event is Events.CONNECTED:
             self._printer.commands(['FIRMWARE_RESTART'])
         elif event is Events.SETTINGS_UPDATED:
-            self._logger.info("Z-Bolt reloading toolchanger")
+            self._logger.info("Z-Bolt reloading config")
             self.ToolChanger.initialize()
+            self.FilamentChecker.reload_settings()
         elif event is Events.PRINT_STARTED:
             self.ToolChanger.on_printing_started()
             self.FilamentChecker.on_printing_started()
@@ -110,6 +111,8 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         return line
 
     def on_gcode_queuing(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
+        cmd = self.FilamentChecker.handle_reservation_gcode(cmd)
+
         if cmd[0] == 'T':
             tool = int(cmd[1])
             return [cmd] + self.ToolChanger.on_tool_change_gcode(tool)

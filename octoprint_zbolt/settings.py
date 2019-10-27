@@ -1,13 +1,13 @@
 class ZBoltSettings(object):
     def __init__(self, settings):
         self._settings = settings
-    
+
     def get_z_offset(self, tool):
         offset = 0.0
 
-        if tool in [1,2,3]:
+        if tool in [1, 2, 3]:
             offset = self._settings.get(["t%s_offset" % tool, "z"])
-        
+
         return float(offset)
 
     def set_z_offset(self, tool, value):
@@ -17,9 +17,21 @@ class ZBoltSettings(object):
     def get_offsets(self):
         return [
             dict(x=0, y=0, z=0),
-            dict(x=self._settings.get(["t1_offset", "x"]), y=self._settings.get(["t1_offset", "y"]), z=self._settings.get(["t1_offset", "z"])),
-            dict(x=self._settings.get(["t2_offset", "x"]), y=self._settings.get(["t2_offset", "y"]), z=self._settings.get(["t2_offset", "z"])),
-            dict(x=self._settings.get(["t3_offset", "x"]), y=self._settings.get(["t3_offset", "y"]), z=self._settings.get(["t3_offset", "z"]))
+            dict(
+                x=self._settings.get(["t1_offset", "x"]),
+                y=self._settings.get(["t1_offset", "y"]),
+                z=self._settings.get(["t1_offset", "z"]),
+            ),
+            dict(
+                x=self._settings.get(["t2_offset", "x"]),
+                y=self._settings.get(["t2_offset", "y"]),
+                z=self._settings.get(["t2_offset", "z"]),
+            ),
+            dict(
+                x=self._settings.get(["t3_offset", "x"]),
+                y=self._settings.get(["t3_offset", "y"]),
+                z=self._settings.get(["t3_offset", "z"]),
+            ),
         ]
 
     def get_parking_x(self):
@@ -27,7 +39,7 @@ class ZBoltSettings(object):
             self._settings.get(["parking", "t0_x"]),
             self._settings.get(["parking", "t1_x"]),
             self._settings.get(["parking", "t2_x"]),
-            self._settings.get(["parking", "t3_x"])
+            self._settings.get(["parking", "t3_x"]),
         ]
 
     def get_parking_y(self):
@@ -40,20 +52,27 @@ class ZBoltSettings(object):
         return bool(self._settings.get(["parking_sensors"]))
 
     def use_filament_sensors(self):
-        return bool(self._settings.get(["filament","sensors"]))
+        return bool(self._settings.get(["filament_sensors"]))
+
+    def get_filament_reservation(self):
+        reservation = self._settings.get(["filament_reservation"])
+
+        tools = [0,0,0,0]
+
+        for r in reservation:
+            reservedForTool = int(r[1])
+            tools[reservedForTool] = int(reservation[r])
+
+        return tools
 
     @staticmethod
     def default_settings():
         return dict(
-            t1_offset = dict(x=0, y=0, z=0),
-            t2_offset = dict(x=0, y=0, z=0),
-            t3_offset = dict(x=0, y=0, z=0),
-            parking = dict(safe_y=0, y=0, t0_x=0, t1_x=0, t2_x=0, t3_x=0),
-            filament = dict(
-                sensors=0, 
-                reservation_t0=-1,
-                reservation_t1=-1,
-                reservation_t2=-1,
-                reservation_t3=-1
-            )
+            t1_offset=dict(x=0, y=0, z=0),
+            t2_offset=dict(x=0, y=0, z=0),
+            t3_offset=dict(x=0, y=0, z=0),
+            parking=dict(safe_y=0, y=0, t0_x=0, t1_x=0, t2_x=0, t3_x=0),
+            parking_sensors=0,
+            filament_sensors=0,
+            filament_reservation=dict(t0=-1, t1=-1, t2=-1, t3=-1),
         )
