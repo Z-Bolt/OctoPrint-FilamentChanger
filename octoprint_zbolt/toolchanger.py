@@ -20,9 +20,10 @@ class ToolChanger():
         self._active_tool = 0
         self._press_down_tool_only = False
         self._axis_homed = False
+        self._is_changing_tool = False
+        
         self._deactivating_tool_num = None
         self._activating_tool_num = None
-        self._is_changing_tool = False
         self._tool_deactivation_attempts = 0
         self._tool_activation_attempts = 0        
 
@@ -50,6 +51,7 @@ class ToolChanger():
             self._logger.info("Pressing down already activated tool: {}".format(new))
             self._press_down_tool_only = False
             self._is_changing_tool = True
+            self._deactivating_tool_num = None
             self._activating_tool_num = new
             self._tool_activation_attempts = 0
             self._active_tool = new

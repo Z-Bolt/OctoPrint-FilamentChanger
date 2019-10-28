@@ -4,6 +4,26 @@ import click
 from octoprint_zbolt_octoscreen.notifications import Notifications
 
 
+
+
+class AsynRequest:
+    def __init__(self, printer):
+        self._printer = printer
+        pass
+
+    def handleCmdResponse(self, cmd, condition, callback, env):
+        pass
+
+    def handleCmdExecution(self, cmd, callback):
+        pass
+
+    def handleMessage(self, cmd, callback):
+        pass
+
+    def on_gcode_received(self):
+        pass
+
+
 class FilamentChecker:
     def __init__(self, logger, printer, toolchanger, settings):
         self._logger = logger
@@ -33,6 +53,7 @@ class FilamentChecker:
         errors = []
         job = self._printer.get_current_job()
         # reserve = self._settings.get_filament_reservation()
+        self._logger.info(job)
 
         toolsGoingToUse = []
         reserveToolsForThisJob=[]
@@ -100,7 +121,24 @@ class FilamentChecker:
                     ]
                 )
                 self._print_pause_position = None
+
         self._guarantee_filament_presence()
+
+
+    def on_complete_reserve_switch(self):
+        p = self._print_pause_position
+        self._printer.commands(
+            [
+                "G91", "G0 E10", "G90",
+                "G0 X{} Y{} Z{}".format(p["x"], p["y"], p["z"]),
+                "G92 E{}".format(p["e"]),
+            ]
+        )
+        
+        self._paused_due_filament_over = False
+        self._printer.set_job_on_hold(False)
+        self._print_pause_position = None
+
 
     def on_tool_change(self, old, new):
         if not self._settings.use_filament_sensors():
@@ -125,15 +163,13 @@ class FilamentChecker:
         if not self._printer.is_printing():
             return cmd
             
-        self._logger.info("handle_reservation_gcode")
-        self._logger.info(cmd)
         for r in self._activated_reservation:
             cmd = cmd.replace(r, self._activated_reservation[r])
-        self._logger.info(cmd)
 
         return cmd
 
     def on_position_received(self, line):
+        # X:85.000 Y:0.000 Z:285.455 E:-3.302
         if self._paused_due_filament_over and not self._print_pause_position:
             self._print_pause_position = Response.parse_position_line(line)
             self._logger.info("Saving position _paused_due_filament_over")
@@ -155,10 +191,11 @@ class FilamentChecker:
 
         self._logger.info("Check current tool {}".format(tool))
 
-        if not self._status[tool] and not self._reservation[tool]:
-            self._put_on_hold(tool)
-        elif not self._status[tool] and self._reservation[tool]:
-            self._switch_tool(tool)
+        if not self._status[tool]:
+            if self._reservation[tool] >= 0:
+                self._switch_to_reserver_tool(tool)
+            else:
+                self._put_on_hold(tool)
 
     def _put_on_hold(self, tool):
         self._logger.error("Stopping printing")
@@ -176,22 +213,31 @@ class FilamentChecker:
             ["M114", "G91", "G0 Z2", "G90", "G91", "G0 E-50", "G90", "G0 X10 Y200"]
         )
 
-    def _switch_tool(self, tool):
-        self._logger.info("Switching to reserved tool.")
+    def _switch_to_reserver_tool(self, tool):
+        self._printer.set_job_on_hold(True)
+        self._paused_due_filament_over = True
+
         reserve = self._reservation[tool]
+        
+        self._logger.info("Switching from tool {} to reserved tool {}.".format(tool, reserve))
+
         temperatures = self._printer.get_current_temperatures()
         target_temperature = temperatures['tool{}'.format(tool)]['target']
 
         self._printer.commands([
+            "M114",
+            "G91", "G0 Z2", "G90",
             "G0 X10 Y10",
+            "G91", "G0 E-50", "G90", 
             "M104 T{} S0".format(tool),
             "M104 T{} S{}".format(reserve, target_temperature),
             "M105",
             "M109 T{} S{}".format(reserve, target_temperature),
-            "T{}".format(reserve)
+            "T{}".format(reserve),
+            "M118 zbtc:complete_reserve_switch"
         ])
 
-        # self._activated_reservation["T{}".format(tool)] = "T{}".format(reserve)
+        self._activated_reservation["T{}".format(tool)] = "T{}".format(reserve)
 
         # M104 T1 S220
         # M105

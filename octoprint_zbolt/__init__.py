@@ -46,7 +46,7 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         return dict(
             get_z_offset=["tool"],
             set_z_offset=["tool", "value"],
-            get_notification=[],
+            # get_notification=[],
             problem_occurs=[],
             problem_solved=[]
         )
@@ -60,8 +60,8 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         elif command == "set_z_offset":
             self.Settings.set_z_offset(data.get("tool"), data.get("value"))
             return flask.jsonify("OK")
-        elif command == "get_notification":
-            return flask.jsonify(message = Notifications.get_message_to_display())
+        # elif command == "get_notification":
+        #     return flask.jsonify(message = Notifications.get_message_to_display())
         elif command == "problem_occurs":
             self._printer.pause_print()
             data = {
@@ -103,6 +103,8 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
             self.ToolChanger.on_tool_activated()
         elif "zbtc:extruder" in line:
             self.FilamentChecker.on_sensor_triggered(line)
+        elif "zbtc:complete_reserve_switch" in line:
+            self.FilamentChecker.on_complete_reserve_switch()
         elif 'X:' in line and 'Y:' in line and 'Z:' in line:
             self.FilamentChecker.on_position_received(line)
         elif "Klipper state: Ready" in line:
