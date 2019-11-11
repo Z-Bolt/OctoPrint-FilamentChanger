@@ -6,7 +6,7 @@ from octoprint_zbolt_octoscreen.notifications import Notifications
 
 
 
-class AsynRequest:
+class AsyncRequest:
     def __init__(self, printer):
         self._printer = printer
         pass
@@ -75,26 +75,6 @@ class FilamentChecker:
         for toolNum in list(set().union(toolsGoingToUse, reserveToolsForThisJob)):
             if not self._status[toolNum]:
                 errors.append("Filament in extruder {} is over.".format(toolNum + 1))
-
-        # for t in job["filament"]:
-        #     toolNum = int(t[4])
-        #     # Check that tools from gcode have filament
-        #     if not self._status[toolNum]:
-        #         errors.append("Filament in extruder {} is over.".format(toolNum + 1))
-
-        #     if toolNum in reserve:
-        #         errors.append(
-        #             "Tool {} was defined as reserved, so it can't be used as a main tool.".format(
-        #                 toolNum + 1
-        #             )
-        #         )
-        # # Check that reserveted tools has filament
-        # for r in reserve:
-        #     if not self._status[toolNum]:
-        #         errors.append("Filament in reserved extruder {} is over.".format(r + 1))
-
-        # M118 zbtc:extruder:3:in:
-        # M118 Klipper state: Ready
 
         if len(errors) > 0:
             errors.append("Please fix it and try again.")
@@ -202,7 +182,7 @@ class FilamentChecker:
         Notifications.send_message(
             {
                 "title": "Filament is over",
-                "text": "It seems like filament in extruder {} is over.\nPlease fix it and resume printing.".format(tool),
+                "text": "It seems like filament in extruder {} is over.\nPlease fix it and resume printing.".format(tool+1),
             }
         )
         self._paused_due_filament_over = True

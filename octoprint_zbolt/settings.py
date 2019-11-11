@@ -11,7 +11,7 @@ class ZBoltSettings(object):
         return float(offset)
 
     def set_z_offset(self, tool, value):
-        self._settings.set(["t%s_offset" % tool, "z"], value)
+        self._settings.set(["t%s_offset" % tool, "z"], round(float(value), 5))
         self._settings.save()
 
     def get_offsets(self):

@@ -7,10 +7,11 @@ import flask
 import socket
 
 from octoprint.events import Events
+from octoprint_zbolt_octoscreen.notifications import Notifications
 from octoprint_zbolt.toolchanger import ToolChanger
 from octoprint_zbolt.filament_checker import FilamentChecker
-from octoprint_zbolt_octoscreen.notifications import Notifications
 from octoprint_zbolt.settings import ZBoltSettings
+from octoprint_zbolt.zoffset_calibration import ZOffsetCalibration
 
 
 class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
@@ -25,6 +26,8 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         self._logger.info("Z-Bolt Toolchanger init")
         self.Settings = ZBoltSettings(self._settings)
         self.ToolChanger = ToolChanger(self._printer, self.Settings, self._logger)
+        self.ZOffsetCalibration = ZOffsetCalibration(self._printer, self.Settings, self._logger)
+        
         self.FilamentChecker = FilamentChecker( 
             self._logger, 
             self._printer, 
@@ -46,9 +49,7 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         return dict(
             get_z_offset=["tool"],
             set_z_offset=["tool", "value"],
-            # get_notification=[],
-            problem_occurs=[],
-            problem_solved=[]
+            run_zoffset_calibration=[]
         )
 
     def on_settings_save(self, data):
@@ -60,18 +61,9 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
         elif command == "set_z_offset":
             self.Settings.set_z_offset(data.get("tool"), data.get("value"))
             return flask.jsonify("OK")
-        # elif command == "get_notification":
-        #     return flask.jsonify(message = Notifications.get_message_to_display())
-        elif command == "problem_occurs":
-            self._printer.pause_print()
-            data = {
-                "type": "filament-over", "msg": "Filament eroor"
-            }
-            self._plugin_manager.send_plugin_message(self._identifier, data)
-
-            return flask.jsonify("problem_occurs")
-        elif command == "problem_solved":
-            return flask.jsonify("problem_solved")
+        elif command == "run_zoffset_calibration":
+            self.ZOffsetCalibration.run()
+            return flask.jsonify(message = "OK")
 
     def on_api_get(self, request):
         return flask.jsonify(printer_name="test2")
@@ -97,19 +89,26 @@ class ZBoltPlugin(octoprint.plugin.SettingsPlugin,
             self.FilamentChecker.on_print_resumed()
 
     def on_gcode_received(self, comm, line, *args, **kwargs):
+        # Filament Checker Hooks
+        
         if "zbtc:tool_deactivated" in line:
             self.ToolChanger.on_tool_deactivated()
         elif "zbtc:tool_activated" in line:
             self.ToolChanger.on_tool_activated()
+        elif "Klipper state: Ready" in line:
+            self._logger.info("Z-Bolt checking current tool")
+            self.ToolChanger.initialize()
+
+        # Filament Checker Hooks
         elif "zbtc:extruder" in line:
             self.FilamentChecker.on_sensor_triggered(line)
         elif "zbtc:complete_reserve_switch" in line:
             self.FilamentChecker.on_complete_reserve_switch()
         elif 'X:' in line and 'Y:' in line and 'Z:' in line:
             self.FilamentChecker.on_position_received(line)
-        elif "Klipper state: Ready" in line:
-            self._logger.info("Z-Bolt checking current tool")
-            self.ToolChanger.initialize()
+
+        elif "probe at " in line:
+            self.ZOffsetCalibration.on_response_received(line)
         return line
 
     def on_gcode_queuing(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):

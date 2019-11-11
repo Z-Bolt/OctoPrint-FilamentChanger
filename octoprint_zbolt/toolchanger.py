@@ -1,6 +1,6 @@
 import re
 from octoprint_zbolt.toolchanger_sensors import ToolChangerSensors
-from octoprint_zbolt.notifications import Notifications
+from octoprint_zbolt_octoscreen.notifications import Notifications
 
 RETRY_ATTEMPTS = 2
 
@@ -12,7 +12,6 @@ class ToolChanger():
         self._logger = logger
         self.Settings = settings
 
-
     # this method is called when klipper sends message "Klipper state: Ready" and after SETTINGS_UPDATED
     # so current implementation works only with klipper
     def initialize(self):
@@ -20,8 +19,8 @@ class ToolChanger():
         self._active_tool = 0
         self._press_down_tool_only = False
         self._axis_homed = False
-        self._is_changing_tool = False
-        
+        # self._is_changing_tool = False
+
         self._deactivating_tool_num = None
         self._activating_tool_num = None
         self._tool_deactivation_attempts = 0
@@ -50,7 +49,6 @@ class ToolChanger():
         if self._press_down_tool_only: 
             self._logger.info("Pressing down already activated tool: {}".format(new))
             self._press_down_tool_only = False
-            self._is_changing_tool = True
             self._deactivating_tool_num = None
             self._activating_tool_num = new
             self._tool_activation_attempts = 0
@@ -59,20 +57,13 @@ class ToolChanger():
 
         if new == self._active_tool:
             self._logger.info("Tool is already active: {} and {}".format(new, self._active_tool))
-            self._is_changing_tool = False
+            # self._is_changing_tool = False
             return []
-
-        # if self._use_sensors:
-        #     sensor_current = self._sensors.get_active_tool()
-        #     if sensor_current != old:
-        #         self._logger.info("Sensors info about active tool differs with octo's. Fixing it.")
-        #         old = sensor_current
-        #         self._active_tool = old
 
         self._printer.set_job_on_hold(True)
         self._logger.info("set_job_on_hold")
 
-        self._is_changing_tool = True
+        # self._is_changing_tool = True
         self._activating_tool_num = new
         self._deactivating_tool_num = self._active_tool
         self._tool_deactivation_attempts = 0
@@ -83,7 +74,6 @@ class ToolChanger():
             self._logger.info("Changing tool from {} to {}".format(self._deactivating_tool_num, self._activating_tool_num))
             self._logger.info("Deactivating tool {}.".format(self._deactivating_tool_num))
             return self._deactivate_tool_gcode(self._deactivating_tool_num, True)
-
 
         self._logger.info("Changing tool from {} to {} without sensors check.".format(self._deactivating_tool_num, self._activating_tool_num))        
         return self._deactivate_tool_gcode(self._deactivating_tool_num, False) + self._active_tool_gcode(self._activating_tool_num) 
@@ -101,7 +91,7 @@ class ToolChanger():
 
         self._activating_tool_num = None
         self._deactivating_tool_num = None
-        self._is_changing_tool = False
+        # self._is_changing_tool = False
 
         self._logger.info("release_job_from_hold")
         self._printer.set_job_on_hold(False)
@@ -164,7 +154,13 @@ class ToolChanger():
 
             self._printer.commands(self._emergency_deativation_gcode())
 
-            Notifications.display("Printer cannot activate tool {}.\nPlease fix it and resume printing.".format(self._activating_tool_num+1))
+            Notifications.send_message(
+                {
+                    "title": "Tool change error",
+                    "text": "Printer cannot activate tool {}.\nPlease fix it and resume printing.".format(self._activating_tool_num+1)
+                }
+            )
+
             return False
 
         if not self._sensors.is_no_active_tool():
@@ -185,7 +181,12 @@ class ToolChanger():
             if self._printer.is_printing():
                 self._printer.pause_print()
 
-            Notifications.display("Printer cannot activate tool {}.\nPlease fix it and resume printing.".format(self._activating_tool_num+1))
+            Notifications.send_message(
+                {
+                    "title": "Tool change error",
+                    "text": "Printer cannot activate tool {}.\nPlease fix it and resume printing.".format(self._activating_tool_num+1)
+                }
+            )
             return False
 
         if self._activating_tool_num is None:
@@ -246,7 +247,6 @@ class ToolChanger():
         self._logger.info("No info that axis were homed so going home!!!")
         self._axis_homed = True
         return ["G28"]
-        # self._printer.commands("G28")
 
     def _emergency_deativation_gcode(self):
         return [
@@ -257,3 +257,16 @@ class ToolChanger():
         ]
 
 
+
+class ZOffsetCalibrationProcess:
+    def __init__(self, printer, settings, logger):
+        self._sensors = None
+        self._printer = printer
+        self._logger = logger
+        self.Settings = settings
+
+    def change_tool(old, new)
+        self._deactivating_tool_num = None
+        self._activating_tool_num = None
+        self._tool_deactivation_attempts = 0
+        self._tool_activation_attempts = 0 
