@@ -1,0 +1,37 @@
+<form class="form-horizontal">
+    <div id="zbolt_fc_filament_settings">
+	<fieldset>
+		<legend>Filament Settings</legend>
+
+		<div class="control-group">
+            <label class="control-label">{{ _('Auto change filament when over:') }}</label>
+            <div class="controls">
+				<input type="checkbox" data-bind="checked: settings.plugins.zbolt_fc.filament_auto_change" />
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">{{ _('Filament Change Gcode:') }}</label>
+            <div class="controls">
+                <textarea rows="5" class="block" data-bind="value: settings.plugins.zbolt_fc.filament_change_gcode"></textarea>
+            </div>
+        </div>
+
+
+        <div class="control-group">
+            <label class="control-label">{{ _('Resume Printing Gcode:') }}</label>
+            <div class="controls">
+                <textarea rows="5" class="block" data-bind="value: settings.plugins.zbolt_fc.resume_printing_gcode"></textarea>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">{{ _('Put On Hold Gcode:') }}</label>
+            <div class="controls">
+                <textarea rows="5" class="block" data-bind="value: settings.plugins.zbolt_fc.put_on_hold_gcode"></textarea>
+            </div>
+        </div>
+
+    </fieldset>
+    </div>
+</form>
